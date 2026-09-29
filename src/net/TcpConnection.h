@@ -1,5 +1,7 @@
 #pragma once
 
+#include"Buffer.h"
+
 #include<functional>
 #include<memory>
 #include<string>
@@ -24,6 +26,8 @@ public:
     int fd()const;
     void setCloseCallback(CloseCallback cb);
 
+    void processInput();
+
 private:
     void handleRead();
     void handleClose();
@@ -34,7 +38,7 @@ private:
     EventLoop* _loop;
     std::unique_ptr<Channel> _channel;
     CloseCallback _closeCallback;
-
+    Buffer _inputBuffer;
 };
 
 }

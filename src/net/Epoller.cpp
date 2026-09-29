@@ -45,7 +45,7 @@ bool Epoller::removeFd(int fd){
 
 }
 
-int Epoller::wait(int timeout=-1){
+int Epoller::wait(int timeout){
 
     return epoll_wait(_epollFd,_events.data(),static_cast<int>(_events.size()),timeout);
 

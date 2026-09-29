@@ -5,6 +5,7 @@ add_library(net
     EventLoop.cpp
     Channel.cpp
     TcpConnection.cpp
+    Buffer.cpp
 )
 
 

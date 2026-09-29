@@ -15,3 +15,5 @@ target_include_directories(
     minikv PRIVATE
     net
 )
+
+target_link_libraries(minikv PRIVATE net)

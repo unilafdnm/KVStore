@@ -1,6 +1,7 @@
-#include "Channel.h"
+#include"Channel.h"
 #include "EventLoop.h"
 #include "Socket.h"
+#include "TcpConnection.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -12,128 +13,166 @@
 #include <unistd.h>
 #include <unordered_map>
 
+int main()
+{
+    constexpr int PORT = 8888;
 
-int main(){
+    int listenFd = socket(
+        AF_INET,
+        SOCK_STREAM,
+        0
+    );
 
-    constexpr int PORT=8888;
-    constexpr int MAX_EVENTS=1024;
-    constexpr int BUFFER_SIZE=1024;
-
-    int listenFd=socket(AF_INET,SOCK_STREAM,0);
-
-    std::cout<<listen<<std::endl;
-
-    if(listenFd <0){
-        std::cerr<<"socket failedn\n";
-        return -1;
+    if (listenFd < 0) {
+        std::cerr << "socket failed\n";
+        return 1;
     }
 
-    int opt=1;
-    setsockopt(listenFd,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
+    int opt = 1;
 
-    minikv::setNonBlocking(listenFd);
+    setsockopt(
+        listenFd,
+        SOL_SOCKET,
+        SO_REUSEADDR,
+        &opt,
+        sizeof(opt)
+    );
+
+    minikv::setNonBlocking(
+        listenFd
+    );
 
     sockaddr_in serverAddr{};
-    serverAddr.sin_family=AF_INET;
-    serverAddr.sin_addr.s_addr=INADDR_ANY;
-    serverAddr.sin_port=htons(PORT);
-    if(bind(listenFd,reinterpret_cast<sockaddr*>(&serverAddr),sizeof(serverAddr)) < 0){
 
-        std::cerr<<"bind failed:"<<std::strerror(errno)<<'\n';
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr =
+        INADDR_ANY;
+    serverAddr.sin_port =
+        htons(PORT);
+
+    if (bind(
+            listenFd,
+            reinterpret_cast<
+                sockaddr*
+            >(&serverAddr),
+            sizeof(serverAddr)
+        ) < 0) {
+
+        std::cerr
+            << "bind failed: "
+            << std::strerror(errno)
+            << '\n';
+
         close(listenFd);
-        return 1;
 
+        return 1;
     }
 
-    listen(listenFd,128);
+    if (listen(
+            listenFd,
+            128
+        ) < 0) {
+
+        std::cerr
+            << "listen failed\n";
+
+        close(listenFd);
+
+        return 1;
+    }
+
+    std::cout
+        << "MiniKV listening on port "
+        << PORT
+        << '\n';
 
     minikv::EventLoop loop;
 
-    std::unordered_map<int,std::unique_ptr<minikv::Channel>> clientChannels;
+    std::unordered_map<
+        int,
+        std::shared_ptr<
+            minikv::TcpConnection
+        >
+    > connections;
 
-    minikv::Channel listenChannel(&loop,listenFd);
+    minikv::Channel listenChannel(
+        &loop,
+        listenFd
+    );
 
     listenChannel.setReadCallback(
-        [&](){
-            while(true){
+        [&]() {
+
+            while (true) {
 
                 sockaddr_in clientAddr{};
-                socklen_t clientLen=sizeof(clientAddr);
 
-                int clientFd=accept(listenFd,reinterpret_cast<sockaddr*>(&clientAddr),&clientLen);
+                socklen_t clientLen =
+                    sizeof(clientAddr);
 
-                if(clientFd<0){
-                    if (errno == EAGAIN ||errno == EWOULDBLOCK) {
+                int clientFd = accept(
+                    listenFd,
+                    reinterpret_cast<
+                        sockaddr*
+                    >(&clientAddr),
+                    &clientLen
+                );
+
+                if (clientFd < 0) {
+
+                    if (errno == EAGAIN ||
+                        errno ==
+                            EWOULDBLOCK) {
+
                         break;
                     }
-                    std::cerr<< "accept failed\n";
+
+                    std::cerr
+                        << "accept failed\n";
+
                     break;
                 }
 
-                minikv::setNonBlocking(clientFd);
-
-                auto channel=std::make_unique<minikv::Channel>(&loop,clientFd);
-                channel->setReadCallback(
-                    [&](){
-
-                        char buffer[BUFFER_SIZE];
-
-                        while (true) {
-
-                            ssize_t n = recv(clientFd,buffer,sizeof(buffer),0);
-
-                            if (n > 0) {
-                                std::cout<< "recv fd="<< clientFd<< ": "<< std::string(buffer,n)<< '\n';
-
-                                send(clientFd,buffer,n,0);
-                            }
-
-                            else if (n == 0) {
-
-                                std::cout<< "client disconnected, fd="<< clientFd<< '\n';
-
-                                auto it =clientChannels.find(clientFd);
-
-                                if (it !=clientChannels.end()) {
-                                    loop.removeChannel(it->second.get());
-                                    clientChannels.erase(it);
-                                }
-
-                                close(clientFd);
-
-                                break;
-                            }
-
-                            else {
-
-                                if (errno == EAGAIN ||errno == EWOULDBLOCK) {
-                                    break;
-                                }
-
-                                auto it =clientChannels.find(clientFd);
-
-                                if (it !=clientChannels.end()) {
-
-                                    loop.removeChannel(it->second.get());
-                                    clientChannels.erase(it);
-                                }
-
-                                close(clientFd);
-
-                                break;
-                            }
-                        }
-
-
-                    }
+                minikv::setNonBlocking(
+                    clientFd
                 );
 
+                std::cout
+                    << "client connected, fd="
+                    << clientFd
+                    << '\n';
+
+                auto connection =
+                    std::make_shared<
+                        minikv::TcpConnection
+                    >(
+                        &loop,
+                        clientFd
+                    );
+
+                connection->
+                    setCloseCallback(
+                        [&](int fd) {
+
+                            connections.erase(
+                                fd
+                            );
+                        }
+                    );
+
+                connections[
+                    clientFd
+                ] = connection;
+
+                connection->start();
             }
         }
     );
 
     listenChannel.enableReading();
+
     loop.loop();
+
     close(listenFd);
 
     return 0;
