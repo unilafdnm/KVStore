@@ -1,19 +1,17 @@
-#include<sys/epoll.h>
-#include<arpa/inet.h>
-#include<cerrno>
-#include<cstring>
-#include<fcntl.h>
-#include<iostream>
-#include<netinet/in.h>
-#include<sys/socket.h>
-#include<unistd.h>
+#include "Channel.h"
+#include "EventLoop.h"
+#include "Socket.h"
 
-void setNonBlockint(int fd){
-    int flags=fcntl(fd,F_GETFL,0);
+#include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
+#include <memory>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <unordered_map>
 
-    fcntl(fd,F_SETFL,flags|O_NONBLOCK);
-
-}
 
 int main(){
 
@@ -29,7 +27,12 @@ int main(){
         std::cerr<<"socket failedn\n";
         return -1;
     }
-    setNonBlockint(listenFd);
+
+    int opt=1;
+    setsockopt(listenFd,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
+
+    minikv::setNonBlocking(listenFd);
+
     sockaddr_in serverAddr{};
     serverAddr.sin_family=AF_INET;
     serverAddr.sin_addr.s_addr=INADDR_ANY;
@@ -44,80 +47,93 @@ int main(){
 
     listen(listenFd,128);
 
-    int epollFd=epoll_create1(0);
+    minikv::EventLoop loop;
 
-    epoll_event listenEvent{};
-    listenEvent.events=EPOLLIN;
-    listenEvent.data.fd=listenFd;
+    std::unordered_map<int,std::unique_ptr<minikv::Channel>> clientChannels;
 
-    epoll_ctl(epollFd,EPOLL_CTL_ADD,listenFd,&listenEvent);
+    minikv::Channel listenChannel(&loop,listenFd);
 
-    epoll_event events[MAX_EVENTS];
+    listenChannel.setReadCallback(
+        [&](){
+            while(true){
 
-    while(true){
+                sockaddr_in clientAddr{};
+                socklen_t clientLen=sizeof(clientAddr);
 
-        int eventCount=epoll_wait(epollFd,events,MAX_EVENTS,-1);
+                int clientFd=accept(listenFd,reinterpret_cast<sockaddr*>(&clientAddr),&clientLen);
 
+                if(clientFd<0){
+                    if (errno == EAGAIN ||errno == EWOULDBLOCK) {
+                        break;
+                    }
+                    std::cerr<< "accept failed\n";
+                    break;
+                }
 
+                minikv::setNonBlocking(clientFd);
 
-        for(int i=0;i<eventCount;i++){
+                auto channel=std::make_unique<minikv::Channel>(&loop,clientFd);
+                channel->setReadCallback(
+                    [&](){
 
-            if(events[i].data.fd==listenFd){
+                        char buffer[BUFFER_SIZE];
 
-                while(true){
-                    sockaddr_in clientAddr{};
-                    socklen_t clientLent=sizeof(clientAddr);
+                        while (true) {
 
-                    int clientFd=accept(listenFd,reinterpret_cast<sockaddr*>(&clientAddr),&clientLent);
-                    if(clientFd<0){
-                        if(errno == EAGAIN || errno == EWOULDBLOCK){
-                            break;
+                            ssize_t n = recv(clientFd,buffer,sizeof(buffer),0);
+
+                            if (n > 0) {
+                                std::cout<< "recv fd="<< clientFd<< ": "<< std::string(buffer,n)<< '\n';
+
+                                send(clientFd,buffer,n,0);
+                            }
+
+                            else if (n == 0) {
+
+                                std::cout<< "client disconnected, fd="<< clientFd<< '\n';
+
+                                auto it =clientChannels.find(clientFd);
+
+                                if (it !=clientChannels.end()) {
+                                    loop.removeChannel(it->second.get());
+                                    clientChannels.erase(it);
+                                }
+
+                                close(clientFd);
+
+                                break;
+                            }
+
+                            else {
+
+                                if (errno == EAGAIN ||errno == EWOULDBLOCK) {
+                                    break;
+                                }
+
+                                auto it =clientChannels.find(clientFd);
+
+                                if (it !=clientChannels.end()) {
+
+                                    loop.removeChannel(it->second.get());
+                                    clientChannels.erase(it);
+                                }
+
+                                close(clientFd);
+
+                                break;
+                            }
                         }
 
-                        break;
-                    }
-                    
-                    setNonBlockint(clientFd);
-
-                    epoll_event clientEvent{};
-                    clientEvent.events=EPOLLIN;
-                    clientEvent.data.fd=clientFd;
-                    epoll_ctl(epollFd,EPOLL_CTL_ADD,clientFd,&clientEvent);
-                }
-               
-            }else{
-                char buffer[BUFFER_SIZE];
-
-                while(true){
-                    ssize_t n=recv(events[i].data.fd,buffer,sizeof(buffer),0);
-                    if(n>0){
-                        std::cout<<"recv fd="<<events[i].data.fd<<" : "<<std::string(buffer,n)<<'\n';
-                        send(events[i].data.fd,buffer,n,0);
-                    }
-                    else if(n==0){
-                        epoll_ctl(epollFd,EPOLL_CTL_DEL,events[i].data.fd,nullptr);
-                        close(events[i].data.fd);
-                        break;
-                    }else{
-                        if(errno == EAGAIN || errno == EWOULDBLOCK){
-                            break;
-                        }
-                        std::cerr<< "recv failed, fd : "<< std::strerror(errno)<< '\n';
-
-                        epoll_ctl(epollFd,EPOLL_CTL_DEL,events[i].data.fd,nullptr);
-                        close(events[i].data.fd);
-                        break;
 
                     }
-                }
+                );
 
             }
-
         }
+    );
 
-
-    }
-    close(epollFd);
+    listenChannel.enableReading();
+    loop.loop();
     close(listenFd);
 
     return 0;
