@@ -4,6 +4,7 @@ add_library(net
     Epoller.cpp
     EventLoop.cpp
     Channel.cpp
+    TcpConnection.cpp
 )
 
 
