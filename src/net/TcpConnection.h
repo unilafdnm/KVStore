@@ -32,6 +32,7 @@ private:
     void handleRead();
     void handleClose();
     void handleError();
+    void handleWrite();
 
 private:
     int _fd;
@@ -39,6 +40,7 @@ private:
     std::unique_ptr<Channel> _channel;
     CloseCallback _closeCallback;
     Buffer _inputBuffer;
+    Buffer _outputBuffer;
 };
 
 }

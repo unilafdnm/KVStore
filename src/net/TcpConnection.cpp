@@ -33,6 +33,10 @@ TcpConnection::TcpConnection(EventLoop* loop,int fd)
         }
     );
 
+    _channel->setWriteCallback([this](){
+        handleWrite();
+    });
+
 }
 TcpConnection::~TcpConnection(){
 
@@ -47,7 +51,47 @@ void TcpConnection::start(){
 }
 
 void TcpConnection::send(const std::string& data){
-    ::send(_fd,data.data(),data.size(),0);
+
+    while(true){
+        if(_outputBuffer.readableBytes()==0){
+            ssize_t n=::send(_fd,data.data(),data.size(),0);
+            if(n>0){
+
+                if(static_cast<std::size_t>(n) == data.size()){
+                    break;
+                }else if(static_cast<std::size_t>(n) <data.size()){
+                    const char* temp=data.data();
+                    _outputBuffer.append(temp+n,data.size()-n);
+                    break;
+                }
+            }else if(n==-1){
+                if(errno==EAGAIN || errno==EWOULDBLOCK){
+                    const char* temp=data.data();
+                    _outputBuffer.append(temp,data.size());
+                }
+                if(errno == EINTR){
+                    continue;
+                }
+                handleError();
+                break;
+            }else{
+                break;
+            }
+        }else{
+            _outputBuffer.append(data.c_str(),data.size());
+            break;
+        }
+    }
+
+
+    
+
+    if(_outputBuffer.readableBytes()){
+        _channel->enableWrite();
+    }
+    
+
+    
 }
 
 int TcpConnection::fd()const{
@@ -89,23 +133,22 @@ void TcpConnection::handleRead(){
         ssize_t n=recv(_fd,temp,sizeof(temp),0);
         if(n>0){
             _inputBuffer.append(temp,static_cast<std::size_t>(n));
-            std::cout<<"1"<<std::endl;
         }
         else if(n == 0){
             processInput();
-
             handleClose();
-            break;
+            return;
         }else{
 
             if(errno == EAGAIN || errno == EWOULDBLOCK){
-                std::cout<<"3"<<std::endl;
                 break;
             }
+            if(errno == EINTR){
+                continue;
+            }
             std::cerr<<"recv failed,fd="<<_fd<<": "<<std::strerror(errno)<<'\n';
-            handleClose();
-            std::cout<<"4"<<std::endl;
-            break;
+            handleError();
+            return;
         }
         
     }
@@ -113,6 +156,42 @@ void TcpConnection::handleRead(){
     processInput();
 
 }
+
+void TcpConnection::handleWrite(){
+
+    if(_fd < 0 || _outputBuffer.readableBytes() == 0){
+        return;
+    }
+
+
+    while(true){
+        ssize_t n=::send(_fd,_outputBuffer.peek(),_outputBuffer.readableBytes(),0);
+        if(n>0){
+            _outputBuffer.retrieve(n);
+            if(_outputBuffer.readableBytes()==0){
+                _channel->disableWrite();
+                break;
+            }
+        }else if(n == -1){
+            if(errno == EAGAIN || errno==EWOULDBLOCK){
+                break;
+            }
+            if(errno == EINTR){
+                continue;
+            }
+           handleError();
+           break;
+        }
+
+
+    }
+
+
+}
+
+
+
+
 void TcpConnection::handleClose(){
 
     if(_fd<0){

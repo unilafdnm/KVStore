@@ -56,6 +56,10 @@ void Channel::disableAll(){
 
 void Channel::handleEvent(){
 
+    if(_fd<0){
+        return;
+    }
+
     if(_revents&EPOLLIN){
         if(_readCallback){
             _readCallback();
