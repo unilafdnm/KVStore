@@ -1,6 +1,7 @@
 #include"TcpConnection.h"
 #include"EventLoop.h"
 #include"Channel.h"
+#include"KVStore.h"
 
 #include <cerrno>
 #include <cstring>
@@ -10,10 +11,22 @@
 
 namespace minikv{
 
+std::ostream& operator<<(std::ostream& os,CommandType type){
+    switch(type)
+    {
+        case CommandType::GET: os << "GET"; break;
+        case CommandType::SET: os << "SET"; break;
+        case CommandType::DEL: os << "DEL"; break;
+        default: os << "UNKNOWN";
+    }
+    return os;
+    
+}
 
-TcpConnection::TcpConnection(EventLoop* loop,int fd)
+
+TcpConnection::TcpConnection(EventLoop* loop,int fd,KVStore& kvstore)
     :_loop(loop),_fd(fd),_channel(std::make_unique<Channel>(loop,fd))
-    ,_inputBuffer(1024)
+    ,_inputBuffer(1024),_kvstore(kvstore)
 {
     _channel->setReadCallback(
         [this](){
@@ -114,10 +127,35 @@ void TcpConnection::processInput(){
         std::size_t len=crlf-_inputBuffer.peek();
         std::string line=_inputBuffer.retrieveAsString(len);
 
-        _inputBuffer.retrieve(2);  
-        std::cout<<"complete message:"<<line<<'\n';
+        _inputBuffer.retrieve(2);
+        std::optional<Command> result=_commandParser.parse(line);
 
-        send(line+"\r\n");
+        if(!result.has_value()){
+            send("ERR\r\n");
+            continue;
+        }
+        std::cout<<"complete message TYPE="<<result->type<<" Key="<<result->key<<" Value"<<result->value<<'\n';
+
+        if(result->type==CommandType::GET){
+            std::optional<std::string> ret=_kvstore.get(result->key);
+            if(ret.has_value()){
+                send(ret.value()+"\r\n");
+            }else{
+                send("get error\r\n");
+            }
+            
+        }else if(result->type==CommandType::SET){
+            _kvstore.set(result->key,result->value);
+            send("Set success\r\n");
+        }else if(result->type==CommandType::DEL){
+            _kvstore.del(result->key);
+            send("DEL success\r\n");
+        }
+
+
+
+      
+        
     }
 
   

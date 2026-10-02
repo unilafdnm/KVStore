@@ -6,6 +6,8 @@ add_library(net
     Channel.cpp
     TcpConnection.cpp
     Buffer.cpp
+    CommandParser.cpp
+    KVStore.cpp
 )
 
 

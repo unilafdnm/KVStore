@@ -3,6 +3,8 @@
 #include "Socket.h"
 #include "TcpConnection.h"
 
+#include"KVStore.h"
+
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
@@ -15,13 +17,10 @@
 
 int main()
 {
+    minikv::KVStore kvtore;
     constexpr int PORT = 8888;
 
-    int listenFd = socket(
-        AF_INET,
-        SOCK_STREAM,
-        0
-    );
+    int listenFd = socket(AF_INET,SOCK_STREAM,0);
 
     if (listenFd < 0) {
         std::cerr << "socket failed\n";
@@ -30,139 +29,67 @@ int main()
 
     int opt = 1;
 
-    setsockopt(
-        listenFd,
-        SOL_SOCKET,
-        SO_REUSEADDR,
-        &opt,
-        sizeof(opt)
-    );
+    setsockopt(listenFd,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
 
-    minikv::setNonBlocking(
-        listenFd
-    );
+    minikv::setNonBlocking(listenFd);
 
     sockaddr_in serverAddr{};
 
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr =
-        INADDR_ANY;
-    serverAddr.sin_port =
-        htons(PORT);
+    serverAddr.sin_addr.s_addr =INADDR_ANY;
+    serverAddr.sin_port =htons(PORT);
 
-    if (bind(
-            listenFd,
-            reinterpret_cast<
-                sockaddr*
-            >(&serverAddr),
-            sizeof(serverAddr)
-        ) < 0) {
+    if (bind(listenFd,reinterpret_cast<sockaddr*>(&serverAddr),sizeof(serverAddr)) < 0) {
 
-        std::cerr
-            << "bind failed: "
-            << std::strerror(errno)
-            << '\n';
-
+        std::cerr<< "bind failed: "<< std::strerror(errno)<< '\n';
         close(listenFd);
-
         return 1;
     }
 
-    if (listen(
-            listenFd,
-            128
-        ) < 0) {
-
-        std::cerr
-            << "listen failed\n";
-
+    if (listen(listenFd,128) < 0) {
+        std::cerr<< "listen failed\n";
         close(listenFd);
-
         return 1;
     }
 
-    std::cout
-        << "MiniKV listening on port "
-        << PORT
-        << '\n';
-
+    std::cout<< "MiniKV listening on port "<< PORT<< '\n';
     minikv::EventLoop loop;
+    std::unordered_map<int,std::shared_ptr<minikv::TcpConnection>> connections;
 
-    std::unordered_map<
-        int,
-        std::shared_ptr<
-            minikv::TcpConnection
-        >
-    > connections;
-
-    minikv::Channel listenChannel(
-        &loop,
-        listenFd
-    );
+    minikv::Channel listenChannel(&loop,listenFd);
 
     listenChannel.setReadCallback(
         [&]() {
-
             while (true) {
 
                 sockaddr_in clientAddr{};
 
-                socklen_t clientLen =
-                    sizeof(clientAddr);
+                socklen_t clientLen =sizeof(clientAddr);
 
-                int clientFd = accept(
-                    listenFd,
-                    reinterpret_cast<
-                        sockaddr*
-                    >(&clientAddr),
-                    &clientLen
-                );
+                int clientFd = accept(listenFd,reinterpret_cast<sockaddr*>(&clientAddr),&clientLen);
 
                 if (clientFd < 0) {
-
-                    if (errno == EAGAIN ||
-                        errno ==
-                            EWOULDBLOCK) {
-
+                    if (errno == EAGAIN ||errno ==EWOULDBLOCK) {
                         break;
                     }
 
-                    std::cerr
-                        << "accept failed\n";
-
+                    std::cerr<< "accept failed\n";
                     break;
                 }
 
-                minikv::setNonBlocking(
-                    clientFd
-                );
+                minikv::setNonBlocking(clientFd);
 
-                std::cout
-                    << "client connected, fd="
-                    << clientFd
-                    << '\n';
+                std::cout<< "client connected, fd="<< clientFd<< '\n';
 
-                auto connection =
-                    std::make_shared<
-                        minikv::TcpConnection
-                    >(
-                        &loop,
-                        clientFd
-                    );
+                auto connection =std::make_shared<minikv::TcpConnection>(&loop,clientFd,kvtore);
 
-                connection->
-                    setCloseCallback(
+                connection->setCloseCallback(
                         [&](int fd) {
-
-                            connections.erase(
-                                fd
-                            );
+                            connections.erase(fd);
                         }
                     );
 
-                connections[
-                    clientFd
-                ] = connection;
+                connections[clientFd] = connection;
 
                 connection->start();
             }

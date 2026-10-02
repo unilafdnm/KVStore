@@ -1,22 +1,27 @@
 #pragma once
 
-#include"Buffer.h"
+#include"KVStore.h"
 
+#include"Buffer.h"
+#include"CommandParser.h"
 #include<functional>
 #include<memory>
 #include<string>
+#include<ostream>
 
 namespace minikv{
+std::ostream& operator<<(std::ostream& os,CommandType type);
 
 class EventLoop;
 class Channel;
+class KVStore;
 
 class TcpConnection{
 
 public:
     using CloseCallback=std::function<void(int)>;
 
-    TcpConnection(EventLoop* loop,int fd);
+    TcpConnection(EventLoop* loop,int fd,KVStore& kvstore);
     ~TcpConnection();
 
     void start();
@@ -25,10 +30,11 @@ public:
 
     int fd()const;
     void setCloseCallback(CloseCallback cb);
-
     void processInput();
-
+    
 private:
+   
+
     void handleRead();
     void handleClose();
     void handleError();
@@ -41,6 +47,10 @@ private:
     CloseCallback _closeCallback;
     Buffer _inputBuffer;
     Buffer _outputBuffer;
+    CommandParser _commandParser;
+
+    KVStore& _kvstore;
+
 };
 
 }
