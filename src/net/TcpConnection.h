@@ -9,19 +9,22 @@
 #include<string>
 #include<ostream>
 
+
 namespace minikv{
 std::ostream& operator<<(std::ostream& os,CommandType type);
 
 class EventLoop;
 class Channel;
 class KVStore;
+class ThreadPool;
 
-class TcpConnection{
+class TcpConnection:public std::enable_shared_from_this<TcpConnection>
+{
 
 public:
     using CloseCallback=std::function<void(int)>;
 
-    TcpConnection(EventLoop* loop,int fd,KVStore& kvstore);
+    TcpConnection(EventLoop* loop,int fd,KVStore& kvstore,ThreadPool* threadPool);
     ~TcpConnection();
 
     void start();
@@ -48,7 +51,7 @@ private:
     Buffer _inputBuffer;
     Buffer _outputBuffer;
     CommandParser _commandParser;
-
+    ThreadPool* _threadPool;
     KVStore& _kvstore;
 
 };

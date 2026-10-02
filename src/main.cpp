@@ -2,7 +2,7 @@
 #include "EventLoop.h"
 #include "Socket.h"
 #include "TcpConnection.h"
-
+#include"ThreadPool.h"
 #include"KVStore.h"
 
 #include <arpa/inet.h>
@@ -19,7 +19,8 @@ int main()
 {
     minikv::KVStore kvtore;
     constexpr int PORT = 8888;
-
+    //std::shared_ptr<minikv::ThreadPool> threadpool=std::make_shared<minikv::ThreadPool>();
+    minikv::ThreadPool threadPool{};
     int listenFd = socket(AF_INET,SOCK_STREAM,0);
 
     if (listenFd < 0) {
@@ -81,7 +82,7 @@ int main()
 
                 std::cout<< "client connected, fd="<< clientFd<< '\n';
 
-                auto connection =std::make_shared<minikv::TcpConnection>(&loop,clientFd,kvtore);
+                auto connection =std::make_shared<minikv::TcpConnection>(&loop,clientFd,kvtore,&threadPool);
 
                 connection->setCloseCallback(
                         [&](int fd) {

@@ -1,4 +1,5 @@
 #include"TcpConnection.h"
+#include"ThreadPool.h"
 #include"EventLoop.h"
 #include"Channel.h"
 #include"KVStore.h"
@@ -24,9 +25,9 @@ std::ostream& operator<<(std::ostream& os,CommandType type){
 }
 
 
-TcpConnection::TcpConnection(EventLoop* loop,int fd,KVStore& kvstore)
+TcpConnection::TcpConnection(EventLoop* loop,int fd,KVStore& kvstore,ThreadPool* threadPool)
     :_loop(loop),_fd(fd),_channel(std::make_unique<Channel>(loop,fd))
-    ,_inputBuffer(1024),_kvstore(kvstore)
+    ,_inputBuffer(1024),_kvstore(kvstore),_threadPool(threadPool)
 {
     _channel->setReadCallback(
         [this](){
@@ -128,35 +129,58 @@ void TcpConnection::processInput(){
         std::string line=_inputBuffer.retrieveAsString(len);
 
         _inputBuffer.retrieve(2);
-        std::optional<Command> result=_commandParser.parse(line);
 
-        if(!result.has_value()){
-            send("ERR\r\n");
-            continue;
-        }
-        std::cout<<"complete message TYPE="<<result->type<<" Key="<<result->key<<" Value"<<result->value<<'\n';
 
-        if(result->type==CommandType::GET){
-            std::optional<std::string> ret=_kvstore.get(result->key);
-            if(ret.has_value()){
-                send(ret.value()+"\r\n");
-            }else{
-                send("get error\r\n");
+    auto self=shared_from_this();
+    auto func=[self,line](){ 
+            std::optional<Command> result=self->_commandParser.parse(line);
+
+            if(!result.has_value()){
+                self->_loop->queueInLoop([self](){
+                    self->send("ERR\r\n");
+                });
+                
+                return;
             }
-            
-        }else if(result->type==CommandType::SET){
-            _kvstore.set(result->key,result->value);
-            send("Set success\r\n");
-        }else if(result->type==CommandType::DEL){
-            _kvstore.del(result->key);
-            send("DEL success\r\n");
-        }
+            std::cout<<"complete message TYPE="<<result->type<<" Key="<<result->key<<" Value"<<result->value<<'\n';
 
+            if(result->type==CommandType::GET){
+                std::optional<std::string> ret=self->_kvstore.get(result->key);
+                if(ret.has_value()){
+                    self->_loop->queueInLoop([self,ret](){
+                         self->send(ret.value()+"\r\n");
+                    });
+                }else{
+                    self->_loop->queueInLoop([self](){
+                         self->send("get error\r\n");
+                    });
 
+                    
+                }
+                
+            }else if(result->type==CommandType::SET){
+                self->_kvstore.set(result->key,result->value);
 
-      
-        
+                self->_loop->queueInLoop([self](){
+                    self->send("Set success\r\n");
+                });
+
+                
+            }else if(result->type==CommandType::DEL){
+                self->_kvstore.del(result->key);
+                self->_loop->queueInLoop([self](){
+                    self->send("DEL success\r\n");
+                });
+
+                
+            }
+
+    };
+
+    _threadPool->submit(func);
+
     }
+   
 
   
 
