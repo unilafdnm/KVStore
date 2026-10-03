@@ -85,6 +85,7 @@ void TcpConnection::send(const std::string& data){
                 if(errno==EAGAIN || errno==EWOULDBLOCK){
                     const char* temp=data.data();
                     _outputBuffer.append(temp,data.size());
+                    break;
                 }
                 if(errno == EINTR){
                     continue;
@@ -130,24 +131,11 @@ void TcpConnection::processInput(){
         }
         std::size_t len=crlf-_inputBuffer.peek();
         std::string line=_inputBuffer.retrieveAsString(len);
-
         _inputBuffer.retrieve(2);
-
-
         auto self=shared_from_this();
         std::optional<Command> result=self->_commandParser.parse(line);
-
-        if(!result.has_value()){
-            self->_loop->queueInLoop([self](){
-                self->send("ERR\r\n");
-            });
-            
-            return;
-        }
-
-        self->_pendingCommands.push_back(result.value());
+        self->_pendingCommands.push_back(result);
     
-        
     }
     processNextCommand();
 
@@ -250,14 +238,23 @@ void TcpConnection::processNextCommand(){
         return;
     }
 
-    Command command=std::move(_pendingCommands.front());
+    std::optional<Command> command=std::move(_pendingCommands.front());
     _pendingCommands.pop_front();
     auto self=shared_from_this();
+    if(!command.has_value()){
+        _loop->queueInLoop([self](){
+            self->send("ERR\r\n");
+            self->processNextCommand();
+        });
+       return;
+    }
+
+    
     auto func=[self,command](){ 
            
-            std::cout<<"complete message TYPE="<<command.type<<" Key="<<command.key<<" Value"<<command.value<<'\n';
+            std::cout<<"complete message TYPE="<<command->type<<" Key="<<command->key<<" Value"<<command->value<<'\n';
 
-            std::string ret=self->_executor.execute(command); 
+            std::string ret=self->_executor.execute(command.value()); 
             self->_loop->queueInLoop([self,ret](){
                 self->send(ret);
                 self->_processing=false;

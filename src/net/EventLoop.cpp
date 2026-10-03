@@ -17,7 +17,6 @@ EventLoop::EventLoop()
 {
 
     _wakeupFd=eventfd(0,EFD_CLOEXEC|EFD_NONBLOCK);
-    _epoller.addFd(_wakeupFd,EPOLLIN);
     _wakeupChannel=std::make_unique<Channel>(this,_wakeupFd);
     _wakeupChannel->enableReading();
     _wakeupChannel->setReadCallback([this](){

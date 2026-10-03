@@ -86,9 +86,11 @@ int main()
 
                 connection->setCloseCallback(
                         [&](int fd) {
-                            connections.erase(fd);
+                            loop.queueInLoop([&,fd](){
+                                 connections.erase(fd);
+                            });
                         }
-                    );
+                );
 
                 connections[clientFd] = connection;
 

@@ -60,7 +60,7 @@ private:
     CommandExecutor _executor;
 
     bool _processing;
-    std::deque<Command> _pendingCommands;
+    std::deque<std::optional<Command>> _pendingCommands;
 
 };
 
