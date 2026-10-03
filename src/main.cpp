@@ -4,6 +4,7 @@
 #include "TcpConnection.h"
 #include"ThreadPool.h"
 #include"KVStore.h"
+#include"AOF.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -17,7 +18,11 @@
 
 int main()
 {
-    minikv::KVStore kvtore;
+    minikv::AOF aof("appendonly.aof");
+    minikv::KVStore kvtore(&aof);
+
+    aof.load(kvtore);
+
     constexpr int PORT = 8888;
     //std::shared_ptr<minikv::ThreadPool> threadpool=std::make_shared<minikv::ThreadPool>();
     minikv::ThreadPool threadPool{};

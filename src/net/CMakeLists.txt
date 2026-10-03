@@ -10,6 +10,7 @@ add_library(net
     KVStore.cpp
     ThreadPool.cpp
     CommandExecutor.cpp
+    AOF.cpp
 )
 
 
