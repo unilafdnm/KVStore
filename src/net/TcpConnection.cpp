@@ -27,7 +27,8 @@ std::ostream& operator<<(std::ostream& os,CommandType type){
 
 TcpConnection::TcpConnection(EventLoop* loop,int fd,KVStore& kvstore,ThreadPool* threadPool)
     :_loop(loop),_fd(fd),_channel(std::make_unique<Channel>(loop,fd))
-    ,_inputBuffer(1024),_kvstore(kvstore),_threadPool(threadPool)
+    ,_inputBuffer(1024),_kvstore(kvstore),_threadPool(threadPool),_executor(kvstore)
+    ,_processing(false)   
 {
     _channel->setReadCallback(
         [this](){
@@ -67,6 +68,8 @@ void TcpConnection::start(){
 void TcpConnection::send(const std::string& data){
 
     while(true){
+        std::cout<<"send thread id:"<<std::this_thread::get_id()<<std::endl;
+
         if(_outputBuffer.readableBytes()==0){
             ssize_t n=::send(_fd,data.data(),data.size(),0);
             if(n>0){
@@ -131,56 +134,22 @@ void TcpConnection::processInput(){
         _inputBuffer.retrieve(2);
 
 
-    auto self=shared_from_this();
-    auto func=[self,line](){ 
-            std::optional<Command> result=self->_commandParser.parse(line);
+        auto self=shared_from_this();
+        std::optional<Command> result=self->_commandParser.parse(line);
 
-            if(!result.has_value()){
-                self->_loop->queueInLoop([self](){
-                    self->send("ERR\r\n");
-                });
-                
-                return;
-            }
-            std::cout<<"complete message TYPE="<<result->type<<" Key="<<result->key<<" Value"<<result->value<<'\n';
+        if(!result.has_value()){
+            self->_loop->queueInLoop([self](){
+                self->send("ERR\r\n");
+            });
+            
+            return;
+        }
 
-            if(result->type==CommandType::GET){
-                std::optional<std::string> ret=self->_kvstore.get(result->key);
-                if(ret.has_value()){
-                    self->_loop->queueInLoop([self,ret](){
-                         self->send(ret.value()+"\r\n");
-                    });
-                }else{
-                    self->_loop->queueInLoop([self](){
-                         self->send("get error\r\n");
-                    });
-
-                    
-                }
-                
-            }else if(result->type==CommandType::SET){
-                self->_kvstore.set(result->key,result->value);
-
-                self->_loop->queueInLoop([self](){
-                    self->send("Set success\r\n");
-                });
-
-                
-            }else if(result->type==CommandType::DEL){
-                self->_kvstore.del(result->key);
-                self->_loop->queueInLoop([self](){
-                    self->send("DEL success\r\n");
-                });
-
-                
-            }
-
-    };
-
-    _threadPool->submit(func);
-
+        self->_pendingCommands.push_back(result.value());
+    
+        
     }
-   
+    processNextCommand();
 
   
 
@@ -251,9 +220,6 @@ void TcpConnection::handleWrite(){
 
 }
 
-
-
-
 void TcpConnection::handleClose(){
 
     if(_fd<0){
@@ -277,6 +243,33 @@ void TcpConnection::handleError(){
     std::cerr<<"connection error,fd="<<_fd<<'\n';
     handleClose();
 
+}
+
+void TcpConnection::processNextCommand(){
+    if(_processing || _pendingCommands.empty()){
+        return;
+    }
+
+    Command command=std::move(_pendingCommands.front());
+    _pendingCommands.pop_front();
+    auto self=shared_from_this();
+    auto func=[self,command](){ 
+           
+            std::cout<<"complete message TYPE="<<command.type<<" Key="<<command.key<<" Value"<<command.value<<'\n';
+
+            std::string ret=self->_executor.execute(command); 
+            self->_loop->queueInLoop([self,ret](){
+                self->send(ret);
+                self->_processing=false;
+                self->processNextCommand();
+            });
+    };
+    _processing=true;
+    _threadPool->submit(func);
+   
+
+   
+    
 }
 
 

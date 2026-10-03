@@ -9,6 +9,7 @@ add_library(net
     CommandParser.cpp
     KVStore.cpp
     ThreadPool.cpp
+    CommandExecutor.cpp
 )
 
 

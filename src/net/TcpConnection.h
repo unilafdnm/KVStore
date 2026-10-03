@@ -4,10 +4,13 @@
 
 #include"Buffer.h"
 #include"CommandParser.h"
+#include"CommandExecutor.h"
+
 #include<functional>
 #include<memory>
 #include<string>
 #include<ostream>
+#include<deque>
 
 
 namespace minikv{
@@ -42,6 +45,7 @@ private:
     void handleClose();
     void handleError();
     void handleWrite();
+    void processNextCommand();
 
 private:
     int _fd;
@@ -53,6 +57,10 @@ private:
     CommandParser _commandParser;
     ThreadPool* _threadPool;
     KVStore& _kvstore;
+    CommandExecutor _executor;
+
+    bool _processing;
+    std::deque<Command> _pendingCommands;
 
 };
 

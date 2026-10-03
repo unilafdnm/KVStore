@@ -9,10 +9,8 @@ ThreadPool::ThreadPool(int maxsize)
 {
 
     for(int i=0;i<maxsize;i++){
-        _threads.emplace_back([this,&i](){
-            std::cout<<"thread id="<<i<<std::endl;
+        _threads.emplace_back([this,i](){
             workerLoop();
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         });
     }
 
@@ -43,6 +41,8 @@ void ThreadPool::submit(work task){
 void ThreadPool::workerLoop(){
 
     while(true){
+        std::cout<<"workerLoop thread id:"<<std::this_thread::get_id()<<std::endl;
+        
         std::unique_lock<std::mutex> lock(_mutex);
         _cond.wait(lock,[this](){
             return _stop || !_tasks.empty();
@@ -51,7 +51,6 @@ void ThreadPool::workerLoop(){
         if(_stop && _tasks.empty()){
             return;
         }
-
         auto task=std::move(_tasks.front());
         _tasks.pop_front();
 

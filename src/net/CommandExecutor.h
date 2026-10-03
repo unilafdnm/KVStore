@@ -1,4 +1,4 @@
-#pragma once;
+#pragma once
 
 #include<string>
 
@@ -11,7 +11,7 @@ class CommandExecutor{
 
 public:
     CommandExecutor(KVStore& kvstore);
-    std::string execute(Command& command);
+    std::string execute(const Command& command);
 
 private:
     KVStore& _kvStore;

@@ -2,6 +2,8 @@
 #include"KVStore.h"
 #include"Command.h"
 
+#include<iostream>
+#include<thread>
 
 namespace minikv{
 
@@ -10,7 +12,8 @@ CommandExecutor::CommandExecutor(KVStore& kvstore)
 {
 
 }
-std::string CommandExecutor::execute(Command& command){
+std::string CommandExecutor::execute(const Command& command){
+    std::cout<<"execute thread id:"<<std::this_thread::get_id()<<std::endl;
 
     switch (command.type)
     {
