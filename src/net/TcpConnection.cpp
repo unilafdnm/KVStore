@@ -18,6 +18,9 @@ std::ostream& operator<<(std::ostream& os,CommandType type){
         case CommandType::GET: os << "GET"; break;
         case CommandType::SET: os << "SET"; break;
         case CommandType::DEL: os << "DEL"; break;
+        case CommandType::EXPIRE:os << "EXPIRE";break;
+        case CommandType::TTL:os << "TTL";break;
+        case CommandType::EXPIREAT:os << "EXPIREAT";break;
         default: os << "UNKNOWN";
     }
     return os;

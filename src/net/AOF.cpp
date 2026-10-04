@@ -38,8 +38,6 @@ void AOF::load(KVStore& kvstore){
     while(std::getline(infile,line)){
         std::optional<Command> command=parser.parse(line);
 
-        std::cout<<"key="<<command->key<<'\n';
-
         if(!command.has_value()){
             continue;
         }
@@ -47,7 +45,15 @@ void AOF::load(KVStore& kvstore){
             kvstore.set(command->key,command->value,false);
         }else if(command->type == CommandType::DEL){
             kvstore.del(command->key,false);
-        }else{
+        }else if(command->type==CommandType::EXPIREAT){
+            try{
+                int64_t seconds=std::stoll(command->value);
+                kvstore.expireAt(command->key,seconds,false);
+            }catch(...){
+
+            }
+        }
+        else{
             continue;
         }
 
@@ -56,7 +62,7 @@ void AOF::load(KVStore& kvstore){
 
 }
 
-bool AOF::rewrite(const std::unordered_map<std::string,std::string>& snapshot){
+bool AOF::rewrite(const std::vector<std::string> commands){
 
     std::string tempfileName=_filename+".tmp";
     std::ofstream tempFile(tempfileName,std::ios_base::trunc);
@@ -68,10 +74,10 @@ bool AOF::rewrite(const std::unordered_map<std::string,std::string>& snapshot){
         return false;
     }
 
-    for(const auto& [key,value] : snapshot){
-        tempFile<<"SET "<<key<<" "<<value<<'\n';
-       
+    for(const auto& command : commands){
+        tempFile<<command<<'\n';
     }
+
 
     {
         std::lock_guard<std::mutex> lock(_mutex);

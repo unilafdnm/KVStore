@@ -30,9 +30,22 @@ std::string CommandExecutor::execute(const Command& command){
             return std::string("NIL\r\n");
         }
     }
-       
     case CommandType::DEL:
         return _kvStore.del(command.key)?std::string("1\r\n"):std::string("0\r\n");
+    case CommandType::EXPIRE:
+       try{
+            int64_t seconds=std::stoll(command.value);
+            bool result=_kvStore.expire(command.key,seconds);
+            return result?"1\r\n":"0\r\n";
+       }catch(...){
+            return std::string("ERR\r\n");
+       }
+    case CommandType::TTL:
+       {
+            int64_t result=_kvStore.ttl(command.key);
+            return std::to_string(result)+"\r\n";
+       }
+       
     default:
         return std::string("ERROR\r\n");
     }

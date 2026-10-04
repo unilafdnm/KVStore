@@ -27,6 +27,7 @@ private:
    
     void doPendingFunctors();
     void wakeup();
+    
 
 private:
     Epoller _epoller;

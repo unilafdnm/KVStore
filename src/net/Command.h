@@ -7,7 +7,10 @@ namespace minikv{
 enum class CommandType{
     GET,
     SET,
-    DEL
+    DEL,
+    EXPIRE,
+    TTL,
+    EXPIREAT
 };
 
 struct Command{

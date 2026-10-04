@@ -17,7 +17,7 @@ public:
 
     void append(const std::string& command);
     void load(KVStore& kvstore);
-    bool rewrite(const std::unordered_map<std::string,std::string>& snapshot);
+    bool rewrite(const std::vector<std::string> command);
     bool beginRewrite();
 
 private:

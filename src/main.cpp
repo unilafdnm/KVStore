@@ -104,7 +104,7 @@ int main()
 
     listenChannel.enableReading();
     aof.load(kvtore);
-    std::cout<<kvtore.rewriteAOF()<<std::endl;
+    kvtore.rewriteAOF();
 
     loop.loop();
 
