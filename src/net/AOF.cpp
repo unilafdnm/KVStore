@@ -3,7 +3,8 @@
 #include"CommandParser.h"
 #include"Command.h"
 #include<optional>
-
+#include<thread>
+#include<chrono>
 namespace minikv{
 
 AOF::AOF(const std::string& filename)
@@ -20,6 +21,9 @@ void AOF::append(const std::string& command){
     std::lock_guard<std::mutex> lock(_mutex);
     _file<<command<<'\n';
     _file.flush();
+    if(_rewriting){
+        _rewritrBuffer.push_back(command);
+    }
 }
 
 void AOF::load(KVStore& kvstore){
@@ -51,6 +55,65 @@ void AOF::load(KVStore& kvstore){
 
 
 }
+
+bool AOF::rewrite(const std::unordered_map<std::string,std::string>& snapshot){
+
+    std::string tempfileName=_filename+".tmp";
+    std::ofstream tempFile(tempfileName,std::ios_base::trunc);
+    if(!tempFile.is_open()){
+        std::cerr<<tempfileName<<" open failed\n";
+        std::lock_guard<std::mutex> lock(_mutex);
+        _rewriting=false;
+        _rewritrBuffer.clear();
+        return false;
+    }
+
+    for(const auto& [key,value] : snapshot){
+        tempFile<<"SET "<<key<<" "<<value<<'\n';
+       
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        for(const auto& str:_rewritrBuffer){
+            tempFile<<str<<'\n';
+        }
+
+    }
+
+
+    tempFile.flush();
+    tempFile.close();
+
+    std::lock_guard<std::mutex> lock(_mutex);
+    _file.close();
+
+    if(rename(tempfileName.c_str(),_filename.c_str())!=0){
+        std::cerr<<"rename failed\n";
+        _file.open(_filename,std::ios_base::app);
+        _rewriting=false;
+        _rewritrBuffer.clear();
+        return false;
+    }
+    _file.open(_filename,std::ios_base::app);
+
+    _rewriting=false;
+    _rewritrBuffer.clear();
+    return true;
+
+}
+
+bool AOF::beginRewrite(){
+    std::lock_guard<std::mutex> lock(_mutex);
+    if(_rewriting){
+        return false;
+    }
+
+    _rewriting=true;
+    _rewritrBuffer.clear();
+    return true;
+}
+
 
 
 

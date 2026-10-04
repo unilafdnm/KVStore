@@ -49,5 +49,29 @@ bool KVStore::del(std::string key,bool writeAof){
     return result;
 }
 
+std::unordered_map<std::string,std::string> KVStore::snapshot(){
+    std::shared_lock<std::shared_mutex> lock(_shared_mutex);
+    return _kvstore;
+}
+
+bool KVStore::rewriteAOF(){
+    if(!_aof){
+        return false;
+    }
+
+    std::unordered_map<std::string,std::string> snapshot;
+
+    {
+        std::shared_lock<std::shared_mutex> lock(_shared_mutex);
+        if(!_aof->beginRewrite()){
+            return false;
+        }
+        snapshot=_kvstore;
+    }
+
+    return _aof->rewrite(snapshot);
+}
+
+
 
 } // namespace minikv

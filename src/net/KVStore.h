@@ -17,6 +17,8 @@ public:
     void set(std::string key,std::string value,bool writeAof=true);
     std::optional<std::string> get(std::string key);
     bool del(std::string key,bool writeAof=true);
+    std::unordered_map<std::string,std::string> snapshot();
+    bool rewriteAOF();
 
 private:
     std::unordered_map<std::string,std::string> _kvstore;

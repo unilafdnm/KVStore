@@ -21,8 +21,6 @@ int main()
     minikv::AOF aof("appendonly.aof");
     minikv::KVStore kvtore(&aof);
 
-    aof.load(kvtore);
-
     constexpr int PORT = 8888;
     //std::shared_ptr<minikv::ThreadPool> threadpool=std::make_shared<minikv::ThreadPool>();
     minikv::ThreadPool threadPool{};
@@ -105,9 +103,14 @@ int main()
     );
 
     listenChannel.enableReading();
+    aof.load(kvtore);
+    std::cout<<kvtore.rewriteAOF()<<std::endl;
 
     loop.loop();
 
+
+
+  
     close(listenFd);
 
     return 0;
